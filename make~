@@ -1,3 +1,0 @@
-protomonitor: protomonitor.c
-   gcc -I ~/sysdig-master/userspace/libscap/ -g protomonitor.c global.c proc_manager.c stat_manager.c  -o protomonitor  ~/sysdig-master/build/userspace/libscap/libscap.a ~/sysdig-master/build/zlib-prefix/src/zlib/libz.a
-
