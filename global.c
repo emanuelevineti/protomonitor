@@ -2,7 +2,6 @@
 
 #include "uthash.h"
 #include "scap.h"
-#include "proto.h"
 /*
 Si utilizzano due strutture globali organizzate in una tabella hash:
 nella prima si memorizzano i dati relativi al consumo di memoria e cpu
