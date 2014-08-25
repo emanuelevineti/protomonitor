@@ -1,0 +1,404 @@
+/*
+
+	Protomonitor v.0.0
+
+*/
+#include <stdio.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/types.h>	
+#include <string.h> /*strncpy(), strlen()*/
+#include "uthash.h"
+#include "scap.h"
+
+
+
+
+//#define DEBUG_MODE
+
+#ifdef DEBUG_MODE 
+/*
+	MASK = 1 procs DB 
+	MASK = 2 threads DB
+	MASK = 3 procs & threads DB
+*/
+unsigned int MASK = 2;
+
+#define DBG(A,B) { if( (A) & MASK ) { B;}}
+
+#else 
+
+#define DBG(A,B)
+
+#endif 
+
+#define DB1(a) DBG(1,a)
+#define DB2(a) DBG(2,a)
+
+
+void readProcessTicks(u_int16_t pid, u_int64_t *ticks, u_int64_t *iowait_ticks, u_int32_t *page_faults) {
+
+	char path[256], buf[512], *line, *what;
+	FILE *f;
+
+	snprintf(path, sizeof(path), "/proc/%u/stat", pid);
+
+	if((f = fopen(path, "r")) != NULL) {
+		if((line = fgets(buf, sizeof(buf), f)) != NULL) {
+			char *what, *el = strtok_r(line, " ", &what);
+			int idx = 0;
+
+			while(el != NULL) {
+				el = strtok_r(NULL, " ", &what);
+				if(el == NULL) break;
+
+				if(idx == 11)      *page_faults = atoll(el);
+				else if(idx == 12) *ticks = atoll(el);  // utime %lu   (14) Amount of time that this process has been scheduled in user mode
+				else if(idx == 13) *ticks += atoll(el); // stime %lu   (15) Amount of time that this process has been scheduled in kernel mode
+				else if(idx == 41) {
+					*iowait_ticks = atoll(el); // delayacct_blkio_ticks %llu (since Linux 2.6.18) (42) Aggregated block I/O delays, measured in clock ticks (centiseconds).
+					break;
+				}
+
+			idx++;
+			}
+		}
+
+	fclose(f);
+	} else {
+      DB1(printf("%s(pid=%u) failed", __FUNCTION__, pid);)
+	}
+}
+
+/* *********************************************** */
+
+u_int64_t read_system_ticks() {
+
+	u_int64_t ticks = 0;
+
+  //ticks = clock();
+
+	FILE *f;
+	char *line, buf[512], *w;
+
+	if((f = fopen("/proc/stat", "r")) != NULL) {
+		if((line = fgets(buf, sizeof(buf), f)) != NULL) {
+			char *w, *el = strtok_r(line, " ", &w);
+
+			while(el) {
+				el = strtok_r(NULL, " ", &w);
+				if(el == NULL) break;
+				ticks += atoll(el);
+			}
+		}
+
+    fclose(f);
+	}
+
+	DB1(printf("%s() = ticks=%lu / clock=%lu", __FUNCTION__, ticks,  clock());)
+
+	return(ticks);
+}
+
+/* *********************************************** */
+
+void updateProcessStats(struct proc_data *stats) {
+
+	char path[256];
+	FILE *f;
+
+	snprintf(path, sizeof(path), "/proc/%u/status", stats->pid);
+
+	if((f = fopen(path, "r")) != NULL) {
+		char *line, buf[128], *w, *l;
+
+		while((line = fgets(buf, sizeof(buf), f)) != NULL) {
+			if(strncmp(line, "VmPeak:", 7) == 0) {
+				l = strtok_r(line, " ", &w);
+				if(l) {
+					l = strtok_r(NULL, " ", &w);
+					if(l)
+						stats->peak_memory = atol(l);
+				}
+			} else if(strncmp(line, "VmSize:", 7) == 0) {
+				l = strtok_r(line, " ", &w);
+				if(l) {
+					l = strtok_r(NULL, " ", &w);
+					if(l)
+						stats->actual_memory = atol(l);
+				}
+				break;
+			}
+		}
+
+		fclose(f);
+	}
+
+	readProcessTicks(stats->pid, &stats->start_process_ticks,
+		&stats->start_process_iowait_ticks,
+		&stats->start_num_page_faults);
+	stats->start_system_ticks = read_system_ticks();
+}
+
+
+void finalizeProcess(struct proc_data *pp) {
+
+
+	readProcessTicks(pp->pid, &pp->end_process_ticks,
+		&pp->end_process_iowait_ticks,
+		&pp->end_num_page_faults);
+	pp->end_system_ticks = read_system_ticks();
+	pp->tot_system_ticks = pp->end_system_ticks - pp->start_system_ticks;
+
+	if(pp->tot_system_ticks >= 3) {
+		pp->avg_load = ((pp->start_process_ticks == 0) || (pp->tot_system_ticks == 0)
+			|| (pp->end_process_ticks == 0)) ? 0 :
+			(float)((pp->end_process_ticks - pp->start_process_ticks)*100)/(float)pp->tot_system_ticks;
+		if(pp->avg_load > 100 || pp->avg_load < 0) pp->avg_load = 0; /* Something went wrong */
+     
+		pp->iowait_time_pctg = ((pp->start_process_iowait_ticks == 0) || (pp->tot_system_ticks == 0)
+			|| (pp->end_process_iowait_ticks == 0)) ? 0 :
+			(float)((pp->end_process_iowait_ticks - pp->start_process_iowait_ticks)*100)/(float)pp->tot_system_ticks;
+	
+	if(pp->iowait_time_pctg > 100 || pp->iowait_time_pctg < 0) 
+		pp->iowait_time_pctg = 0; /* Something went wrong */
+	}/* else {
+		pp->avg_load = 0, pp->iowait_time_pctg = 0; // Too little data 
+	}*/
+	pp->process_page_faults = pp->end_num_page_faults - pp->start_num_page_faults;
+ 	DB1(printf("###### [pid: %u][actual_memory: %lu][peak_memory: %lu][avg_load: %.2f %%][iowait: %.2f]"
+		"[process_page_faults: %u][proc_ticks %u / sys_ticks %u / io ticks: %u]",
+		pp->pid, pp->actual_memory, pp->peak_memory,
+		pp->avg_load, pp->iowait_time_pctg, pp->process_page_faults,
+		(pp->end_process_ticks - pp->start_process_ticks), pp->tot_system_ticks,
+		pp->end_process_iowait_ticks-pp->start_process_iowait_ticks);)
+}
+
+/*		Fine modulo gestione statistiche	*/
+
+
+void invalidate_task_proc(u_int16_t tid){
+
+	struct task_data* data = NULL;
+	struct proc_data* proc = NULL;
+	u_int32_t key = tid;
+
+
+	HASH_FIND_INT32(g_procs, &key, proc);
+	if(proc != NULL && proc->valid != 0){
+		
+		DB2(printf("Eliminazione processo pid : %d\n",proc->pid);)
+		proc->valid = 0;
+	}
+}
+
+/*
+La funzione si occupa dell'inserimento dei processi nelle tabelle dei 
+processi e dei threads. Questo avviene solo se questi non sono già presenti
+in queste.
+*/
+void add_task_proc(struct task_data* data){
+
+	struct task_data* d = NULL;
+	struct proc_data* p = NULL;
+	u_int32_t kpid = data->pid, ktid = data->tid;
+
+	HASH_FIND_INT32(g_tasks, &ktid, d);	
+	if(d != NULL){
+		DB1(printf("errore reinserimento task %d \n",data->tid);)
+	}else{	
+		struct task_data *p = (struct task_data*)malloc(sizeof(struct task_data));
+		char *exe =(char*)malloc(sizeof(char)*128);
+		strncpy(exe,data->exe,strlen(data->exe));
+		u_int32_t key = data->tid;
+		if(p != NULL) {
+			DB2(printf("Inserimento task %d\n",key);)
+			p->tid = ktid, p->pid = data->pid, p->father_pid = data->father_pid, 
+			p->uid = data->uid, p->gid = data->gid, p->exe = p->exe = exe,
+			p->valid = data->valid;
+			HASH_ADD(hh, g_tasks, tid, sizeof(u_int32_t), p);
+		}
+	}
+	
+	HASH_FIND_INT32(g_procs, &kpid, p);
+	if(p != NULL){
+		DB2(printf("errore reinserimento pid %d \n",data->pid);)
+	}else{
+		
+		struct proc_data *p = (struct proc_data*)malloc(sizeof(struct proc_data));
+		if(p != NULL){
+			p->pid = kpid;
+			p->valid = data->valid;
+			HASH_ADD(hh, g_procs, pid,sizeof(u_int32_t), p);
+			updateProcessStats(p);
+		}DB2(printf("Inserimento processo pid: %d \n", p->pid);)	
+	}
+}
+/*
+La funzione si occupa dell'eliminazione delle strutture dei processi/thread 
+non più in uso.
+*/
+void clear_task_proc(){
+
+	struct task_data* data = NULL; 
+	struct proc_data* d = NULL;
+	struct proc_data* proc = NULL;
+
+	for(proc = g_procs; proc != NULL; proc=proc->hh.next){
+		if(proc->valid == 0){
+			printf("Eliminazione proc %d \n", proc->pid);
+			HASH_DEL(g_procs, proc);	
+			if(proc) free(proc);
+		}
+	}
+
+	for(data = g_tasks; data != NULL; data=data->hh.next){
+
+		u_int32_t key = data->pid;
+		HASH_FIND_INT32(g_procs, &key, d);
+		if(d == NULL || d->valid == 0) data->valid = 0;
+
+		if(data->valid == 0){
+			printf("Eliminazione task %d \n",data->tid);
+		
+			HASH_DEL(g_tasks, data);
+			if(data->exe) free(data->exe);	
+			if(data) free(data);
+		}
+	}
+
+
+}
+
+/*
+La funzione stampa su stdout i dati dei processi/threads in memoria
+*/
+void print_tasks_procs(){
+
+	struct task_data* data = NULL;
+	struct proc_data* proc = NULL;
+	printf("\t\t\tTASKS\n\n");
+	for(data = g_tasks; data != NULL; data=data->hh.next) {
+		if(data->valid != 0){		
+		printf("tid = %d : pid = %d : ppid = %d gid = %d : uid = %d : exe = %s \n",
+			data->tid, data->pid, data->father_pid, data->gid, data->uid, data->exe);
+		}
+	}
+	printf("\n\n\t\t\tPROCS\n\n");
+	for(proc = g_procs; proc != NULL; proc=proc->hh.next) {
+		if(proc->valid != 0){		
+		printf("pid = %d actual_memory = %lu : peak_memory = %lu : avg_load = %.2f %% : iowait: %.2f"
+		 " : process_page_faults = %u \n",
+		 proc->pid, proc->actual_memory, proc->peak_memory,
+		 proc->avg_load, proc->iowait_time_pctg, proc->process_page_faults);
+		}
+	}
+}
+/*
+La funzione recupera e gestisce i dati relativi ad un evento di sistema
+*/
+void handle_event(struct ppm_evt_hdr* ev, u_int16_t cpuid,scap_t *h) {
+
+	const struct ppm_event_info *i =  scap_event_getinfo(ev);
+	char process_name[128];
+	struct task_data data;
+
+	switch(ev->type) {
+	case PPME_CLONE_16_X:
+	{
+		scap_threadinfo* t_info = scap_proc_get(h, ev->tid, 0);
+		if(t_info ==NULL){
+			DB1(printf("Impossibile recuperare le informazioni: %d\n",
+				(u_int32_t)ev->tid);)
+			return;
+		}
+		data.tid = (u_int16_t)ev->tid;
+		data.pid = t_info->pid;
+		data.father_pid = t_info->ptid; 
+		data.exe = t_info->exe;
+		data.uid = t_info->uid;
+		data.gid = t_info->gid;
+		data.valid = 1;
+	}
+	add_task_proc(&data);
+	break;
+
+	case PPM_SC_EXIT_GROUP: /* The main process ends */
+	/* A process/thread is over */
+	invalidate_task_proc(ev->tid);
+	break;
+
+
+	default:
+	printf("Unknown event %u\n", ev->type);
+	break;
+	}
+}
+
+
+void reset_count(){
+
+	struct proc_data* proc = NULL;
+	for(proc = g_procs; proc != NULL; proc=proc->hh.next)
+		finalizeProcess(proc);
+
+		clear_task_proc();	
+		print_tasks_procs();
+		
+
+	for(proc = g_procs; proc != NULL; proc=proc->hh.next)
+		updateProcessStats(proc);
+			
+}
+/*	Fine modulo gestione processi	*/
+int main(int argc, char *argv[]) {
+	
+	char error[256];
+  	int capture = 1,live = true, time=0;
+	scap_t *h ;
+	//apro la cattura live degli eventi
+	if(argc == 2){
+		live = false;
+		if( (h = scap_open_offline(argv[1],error)) == NULL){
+			printf("%s :path non valido\n",argv[1]);
+			return(-1);
+		}
+	}else{ if( ( h = scap_open_live(error)) == NULL){
+		printf("Unable to connect to open sysdig: %s\n", error);
+		return(false);
+		}
+	}
+
+	//setto i filtri per gli eventi da catturare solo se la cattura è live
+	if(live){
+		scap_clear_eventmask(h);
+		if(scap_set_eventmask(h, PPME_CLONE_16_X) != SCAP_SUCCESS) 
+			printf("[ERROR] scap call failed: old driver ?\n");
+		if(scap_set_eventmask(h, PPM_SC_EXIT_GROUP) != SCAP_SUCCESS) 
+			printf("[ERROR] scap call failed: old driver ?\n");
+	}
+	//ciclo di cattura
+	while(capture) 
+	{	time+=1;
+		struct ppm_evt_hdr* ev;
+		u_int16_t cpuid;
+		int32_t res = scap_next(h, &ev, &cpuid);
+		
+		if(res > 0 ) {
+			printf("[ERROR] %s\n", scap_getlasterr(h));
+			scap_close(h);
+		break;
+		} else if( res == SCAP_SUCCESS ) { 				
+			handle_event(ev,cpuid,h);
+		} else if( res != -1 ) 	//timeout
+			fprintf(stderr, "scap_next() returned %d\n", res);
+		if( time == 400){
+			reset_count();
+			time = 0;
+		}
+	} 
+	//chiudo la cattura live degli eventi
+	scap_close(h);	
+}
+
+

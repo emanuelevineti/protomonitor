@@ -1,0 +1,26 @@
+
+IDIR = ./ ~/sysdig-master/userspace/libscap/ ~/sysdig-master/build/userspace/libscap/libscap.a ~/sysdig-master/build/zlib-prefix/src/zlib/libz.a
+CC=gcc
+CFLAGS=-I $(IDIR)
+
+ODIR=obj
+LDIR =../lib
+
+LIBS=-lm
+
+_DEPS = scap.h stat_maneger.h uthash.h proc_manger.h
+DEPS = $(patsubst %,$(IDIR)/%,$(_DEPS))
+
+_OBJ = protomonitor.o proc_manager.o stat_manager.o 
+OBJ = $(patsubst %,$(ODIR)/%,$(_OBJ))
+
+
+$(ODIR)/%.o: %.c $(DEPS)
+	$(CC) -c -o $@ $< $(CFLAGS)
+
+protomanager: $(OBJ)
+	gcc -o $@ $^ $(CFLAGS) $(LIBS)
+
+.PHONY: clean
+
+clean:
