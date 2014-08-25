@@ -4,7 +4,7 @@ protomonitor
 
 
 Il programma permette di catturare la creazione e la distruzione di un processo
-e tenere traccia delle suoi dati atraverso l'uso di due tabelle hash: una per 
+e tenere traccia delle suoi dati attraverso l'uso di due tabelle hash: una per 
 il main process ed una per ogni thread. Inoltre periodicamente il programma 
 esegue un calcolo dell'uso della cpu del main process e dei suoi page fault.
 
@@ -26,3 +26,4 @@ Elenco sintetico problemi aperti:
 . Sembra che anche se gestiti casi di errore la e timeout libreria scap riproponga 
   eventi già valutati più di una volta.
 . Bisogna discutere di eventuali preferenze stilistiche nella scrittura del codice.
+. I commenti al momento in italiano devono essere tradotti.
