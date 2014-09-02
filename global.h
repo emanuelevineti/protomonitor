@@ -25,8 +25,10 @@ unsigned int MASK = 2;
 #define DB1(a) DBG(1,a)
 #define DB2(a) DBG(2,a)
 
+#define LOG_STAT_PATH "./proto_stat.log"
+#define LOG_PROCLIFE_PATH "./proto_proclife.log"
 /*	Dichiarazione strutture		*/
-struct  task_data{
+typedef struct  task_data{
   char exe[128];
   u_int32_t tid;	//hash key
   u_int16_t pid;
@@ -34,9 +36,12 @@ struct  task_data{
   u_int16_t uid;
   u_int16_t gid;
   u_int16_t valid;
+  u_int64_t birth_ts; /* birth timestamp, in nanoseconds from epoch */
+  u_int64_t death_ts; /* death timestamp, in nanoseconds from epoch */
   UT_hash_handle hh;
-};
-struct	proc_data{
+}task_data;
+
+typedef struct	proc_data{
   u_int32_t pid;	//hash key
   u_int16_t valid;
 
@@ -59,7 +64,17 @@ struct	proc_data{
   u_int32_t end_num_page_faults;
   u_int32_t process_page_faults;
   UT_hash_handle hh;
-};
+}proc_data;
+
+typedef struct global{
+
+  bool log_onfile_enabled;
+  bool show_help_enabled;
+  bool show_only_procs;
+  bool get_all_proc;
+  int refresh_t;
+  int refresh_man;
+}global;
 
 /*	Definizione variabili globali	*/
 /*
@@ -68,9 +83,9 @@ struct	proc_data{
   dei processi, mentre nella seconda si memorizzano i dati relativi ad i
   singoli thread nati.
 */
-extern struct	proc_data* g_procs ;
-extern struct task_data* g_tasks ;
-
+extern proc_data* g_procs ;
+extern task_data* g_tasks ;
+extern global global_data ;
 extern int32_t uth_status;
 
 /*	Fine Header file		*/

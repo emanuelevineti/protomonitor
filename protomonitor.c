@@ -6,57 +6,40 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <time.h>
 #include <sys/types.h>
 #include <string.h> /*strncpy(), strlen()*/
 #include "uthash.h"
 #include "scap.h"
 #include "global.h"
 #include "proc_manager.h"
-
-
+#include "proto_io.h"
 
 //#define DEBUG_MODE
-
-#ifdef DEBUG_MODE
-/*
-  MASK = 1 procs DB
-  MASK = 2 threads DB
-  MASK = 3 procs & threads DB
-*/
-unsigned int MASK = 2;
-
-#define DBG(A,B) { if( (A) & MASK ) { B;}}
-
-#else
-
-#define DBG(A,B)
-
-#endif
-
-#define DB1(a) DBG(1,a)
-#define DB2(a) DBG(2,a)
 
 
 int main(int argc, char *argv[]) {
 
   char error[256];
-  int capture = 1,live = true, time=0;
+  int capture = 1;
+  time_t last_refresh;
   scap_t *h ;
   //apro la cattura live degli eventi
-  if(argc == 2){
-    live = false;
-    if( (h = scap_open_offline(argv[1],error)) == NULL){
-      printf("%s :path non valido\n",argv[1]);
-      return(-1);
-    }
-  }else{ if( ( h = scap_open_live(error)) == NULL){
-      printf("Unable to connect to open sysdig: %s\n", error);
-      return(false);
-    }
+  printf("\n\t\t INIZIO INIZIALIZZAZIONE \n");
+  
+  read_argv(argc, argv);
+  if(global_data.show_help_enabled){
+    print_help();
+    return(1);
   }
+  
+  if( ( h = scap_open_live(error)) == NULL){
+    printf("Unable to connect to open sysdig: %s\n", error);
+    return(false);
+    }
+
 
   //setto i filtri per gli eventi da catturare solo se la cattura è live
-  if(live){
     scap_clear_eventmask(h);
     if(scap_set_eventmask(h, PPME_CLONE_16_X) != SCAP_SUCCESS)
       printf("[ERROR] scap call failed: old driver ?\n");
@@ -66,10 +49,16 @@ int main(int argc, char *argv[]) {
       printf("[ERROR] scap call failed: old driver ?\n");
     if(scap_set_eventmask(h, PPM_SC_EXIT) != SCAP_SUCCESS)
       printf("[ERROR] scap call failed: old driver ?\n");
-  }
+
+  if(global_data.get_all_proc)
+    init_add_active_proc(h);
+
+  printf("\n\t\t FINE INIZIALIZZAZIONE \n");
   //ciclo di cattura
+  last_refresh = time(NULL);
+  global_data.refresh_man = global_data.refresh_t; //temporaneo
   while(capture)
-    {	time+=1;
+    {	
       struct ppm_evt_hdr* ev;
       u_int16_t cpuid;
       int32_t res = scap_next(h, &ev, &cpuid);
@@ -82,11 +71,15 @@ int main(int argc, char *argv[]) {
 	handle_event(ev,cpuid,h);
       } else if( res != -1 ) 	//timeout
 	fprintf(stderr, "scap_next() returned %d\n", res);
-      /*si aggiornano i dati ogni 400 eventi catturati
+      /*si aggiornano i dati ogni refresh_t secondi (5 default)
 	(XXX numero da regolare) */
-      if( time == 400){
-	manage_data(h);
-	time = 0;
+      if( (time(NULL) - last_refresh) > global_data.refresh_t){
+	print_tasks_procs();
+	last_refresh = time(NULL);
+      }
+      if( (time(NULL) - last_refresh) > global_data.refresh_man){
+        manage_data(h);
+        last_refresh = time(NULL);
       }
     }
   //chiudo la cattura live degli eventi

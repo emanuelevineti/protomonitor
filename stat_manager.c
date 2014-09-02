@@ -78,7 +78,7 @@ u_int64_t read_system_ticks() {
 
 /* *********************************************** */
 
-void updateProcessStats(struct proc_data *stats) {
+void updateProcessStats(proc_data *stats) {
 
 	char path[256];
 	FILE *f;
@@ -117,7 +117,7 @@ void updateProcessStats(struct proc_data *stats) {
 }
 
 
-void finalizeProcess(struct proc_data *pp) {
+void finalizeProcess(proc_data *pp) {
 
 
 	readProcessTicks(pp->pid, &pp->end_process_ticks,

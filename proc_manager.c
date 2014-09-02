@@ -14,31 +14,72 @@
 #include <string.h> /*strncpy(), strlen()*/
 #include "uthash.h"
 #include "scap.h"
+#include "scap-int.h"
 #include "global.h"
 #include "stat_manager.h"
+#include "proto_io.h"
+/*
+La funzione si occupa di inizializzare le tabelle hash dei tasks e processi
+con i processi attivi attualemente sulla macchina
+*/
+void init_add_active_proc(scap_t* h){
+  
+  scap_threadinfo* proc = NULL;
+  task_data* d = NULL;
+  proc_data* p = NULL;	
 
+
+  for(proc = h->m_proclist; proc != NULL; proc=proc->hh.next){
+
+    d = (task_data*)malloc(sizeof(task_data));
+
+    d->tid = (u_int16_t)proc->tid;
+    d->pid = proc->pid;
+    d->father_pid = proc->ptid;
+    strcpy(d->exe,proc->exe);
+    d->uid = proc->uid;
+    d->gid = proc->gid;
+    d->birth_ts = 0;
+    d->valid = 1;
+    
+    HASH_ADD(hh, g_tasks, tid, sizeof(u_int32_t), d);
+
+    if(d->tid == d->pid){
+      p = (proc_data*)malloc(sizeof(proc_data));
+      p->pid = d->pid;
+      p->valid = 1;
+      HASH_ADD(hh, g_procs, pid, sizeof(u_int32_t), p);
+      updateProcessStats(p);
+    }  
+    }
+    
+}
 /*
   La funzione si occupa dell settaggio come non valido di un processo/thread
   appena morto
 */
-void invalidate_task_proc(u_int16_t tid){
+void invalidate_task_proc(u_int16_t tid,u_int64_t death_ts){
 
-  struct task_data* data = NULL;
-  struct proc_data* proc = NULL;
-
+  task_data* data = NULL;
+  proc_data* proc = NULL;
+  
   u_int32_t key = tid;
 
   HASH_FIND_INT32(g_procs, &key, proc);
   if(proc != NULL && proc->valid != 0){
-
+    finalizeProcess(proc);
     DB2(printf("Eliminazione processo pid : %d\n",proc->pid);)
-      proc->valid = 0;
+    proc->valid = 0;
   }
-  HASH_FIND_INT32(g_tasks, &key, data);
-  if(proc != NULL && data->valid != 0){
 
-    DB2(printf("Eliminazione processo pid : %d\n",data->tid);)
-      data->valid = 0;
+  HASH_FIND_INT32(g_tasks, &key, data);
+  if(data != NULL && data->valid != 0){
+
+    DB2(printf("Eliminazione processo tid : %d\n",data->tid);)
+    data->death_ts = death_ts;
+    data->valid = 0;
+    if(global_data.log_onfile_enabled)
+      export_procsdeath_data_onfile(data);
   }
 }
 
@@ -47,23 +88,27 @@ void invalidate_task_proc(u_int16_t tid){
   processi e dei threads. Questo avviene solo se questi non sono già presenti
   in queste.
 */
-void add_task_proc(struct task_data* data){
+void add_task_proc(task_data* data){
 
-  struct task_data* d = NULL;
-  struct proc_data* p = NULL;
+  task_data* d = NULL;
+  proc_data* p = NULL;
   u_int32_t kpid = data->pid, ktid = data->tid;
 
   HASH_FIND_INT32(g_tasks, &ktid, d);
   if(d != NULL){
     DB1(printf("errore reinserimento task %d \n",data->tid);)
       }else{
-    struct task_data *p = (struct task_data*)malloc(sizeof(struct task_data));
+    task_data *p = (task_data*)malloc(sizeof(task_data));
     if(p != NULL) {
+
+      if(global_data.log_onfile_enabled)
+        export_procsbirth_data_onfile(data);
+
       DB2(printf("Inserimento task %d\n",data->tid);)
 	p->tid = ktid, p->pid = data->pid, p->father_pid = data->father_pid,
 	p->uid = data->uid, p->gid = data->gid,
 	p->valid = data->valid;
-      strncpy(p->exe,data->exe,strlen(data->exe));
+      strcpy(p->exe,data->exe);
       HASH_ADD(hh, g_tasks, tid, sizeof(u_int32_t), p);
     }
   }
@@ -73,7 +118,7 @@ void add_task_proc(struct task_data* data){
     DB2(printf("errore reinserimento pid %d \n",data->pid);)
       }else{
 
-    struct proc_data *p = (struct proc_data*)malloc(sizeof(struct proc_data));
+    proc_data *p = (proc_data*)malloc(sizeof(proc_data));
     if(p != NULL){
       p->pid = kpid;
       p->valid = data->valid;
@@ -88,9 +133,9 @@ void add_task_proc(struct task_data* data){
 */
 void clear_task_proc(scap_t* handle){
 
-  struct task_data* data = NULL;
-  struct proc_data* d = NULL;
-  struct proc_data* proc = NULL;
+  task_data* data = NULL;
+  proc_data* d = NULL;
+  proc_data* proc = NULL;
 
   /*	Libera la memoria delle informazioni dei processi e task non più in uso	*/
   for(proc = g_procs; proc != NULL; proc=proc->hh.next){
@@ -122,32 +167,7 @@ void clear_task_proc(scap_t* handle){
 
 }
 
-/*
-  La funzione stampa su stdout i dati dei processi/threads in memoria
-*/
-void print_tasks_procs(){
-  struct task_data* data = NULL;
-  struct proc_data* proc = NULL;
 
-  system("clear");
-
-  printf("\t\t\tTASKS\n\n");
-  for(data = g_tasks; data != NULL; data=data->hh.next) {
-    if(data->valid != 0){
-      printf("tid = %d : pid = %d : ppid = %d gid = %d : uid = %d : exe = %s \n",
-	     data->tid, data->pid, data->father_pid, data->gid, data->uid, data->exe);
-    }
-  }
-  printf("\n\n\t\t\tPROCS\n\n");
-  for(proc = g_procs; proc != NULL; proc=proc->hh.next) {
-    if(proc->valid != 0){
-      printf("pid = %d actual_memory = %u : peak_memory = %u : avg_load = %.2f %% : iowait: %.2f"
-	     " : process_page_faults = %u \n",
-	     proc->pid, proc->actual_memory, proc->peak_memory,
-	     proc->avg_load, proc->iowait_time_pctg, proc->process_page_faults);
-    }
-  }
-}
 /*
 
   La funzione recupera e gestisce i dati relativi ad un evento di sistema.
@@ -180,7 +200,7 @@ void handle_event(struct ppm_evt_hdr* ev, u_int16_t cpuid,scap_t *h) {
 
   const struct ppm_event_info *i =  scap_event_getinfo(ev);
   char process_name[128];
-  struct task_data data;
+  task_data data;
 
   switch(ev->type) {
   case PPME_CLONE_16_X:
@@ -197,6 +217,7 @@ void handle_event(struct ppm_evt_hdr* ev, u_int16_t cpuid,scap_t *h) {
       strcpy(data.exe,t_info->exe);
       data.uid = t_info->uid;
       data.gid = t_info->gid;
+      data.birth_ts = ev->ts;
       data.valid = 1;
 
       /*
@@ -214,15 +235,15 @@ void handle_event(struct ppm_evt_hdr* ev, u_int16_t cpuid,scap_t *h) {
       XXX Senza la cattura di questi 3 eventi diversi non si riesce
       a rilevare la morte di tutti i processi*/
   case PPME_PROCEXIT_E: /* The main process ends */
-    invalidate_task_proc(ev->tid);
+    invalidate_task_proc(ev->tid, ev->ts);
     break;
 
   case PPM_SC_EXIT_GROUP:
-    invalidate_task_proc(ev->tid);
+    invalidate_task_proc(ev->tid, ev->ts);
     break;
 
   case PPM_SC_EXIT:
-    invalidate_task_proc(ev->tid);
+    invalidate_task_proc(ev->tid, ev->ts);
     break;
 
   default:
@@ -237,14 +258,15 @@ void handle_event(struct ppm_evt_hdr* ev, u_int16_t cpuid,scap_t *h) {
 */
 void manage_data(scap_t* handle){
 
-  struct proc_data* proc = NULL;
+  proc_data* proc = NULL;
 
   for(proc = g_procs; proc != NULL; proc=proc->hh.next)
     finalizeProcess(proc);
 
-  clear_task_proc(handle);
-  print_tasks_procs();
+  if(global_data.log_onfile_enabled)
+    export_data_onfile();
 
+  clear_task_proc(handle);
 
   for(proc = g_procs; proc != NULL; proc=proc->hh.next)
     updateProcessStats(proc);
