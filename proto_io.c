@@ -10,7 +10,11 @@
 #include "scap.h"
 #include "global.h"
 
+/*
+La funzione stampa su stdout le informazioni riguardanti l'uso del programma
+*/
 void print_help(){
+  printf("protomonitor: processes life live moninitor \n\n");
   printf("	-l | --log 		export	proc data into a log file\n");
   printf("	-p | --proc_only	show only information about main processes\n");
   printf("	-h | --help		show information about the inline command\n");
@@ -18,11 +22,21 @@ void print_help(){
   printf("	-t | --time < 1-10 >	set the refresh time (1 sec to 10)\n");
 }
 
+/*
+La funzione si occupa di leggere i parametri passati al programma all'atto
+della sua invocazione e setta le variabili globali corrispondenti alle
+funzionalità richieste
+*/
 void read_argv(int argc, char *argv[]){
 
   int i;
+
   global_data.refresh_t = 5;
   global_data.refresh_man = 30;
+  global_data.log_onfile_enabled = false;
+  global_data.show_help_enabled = false;
+  global_data.show_only_procs =false;
+
   for(i = 0; i<argc; i++){
     
     if( strstr(argv[i], "-l") || strstr(argv[i], "--log"))
@@ -40,6 +54,7 @@ void read_argv(int argc, char *argv[]){
     }
   }
 }
+
 /*
   La funzione stampa su stdout i dati dei processi/threads in memoria
 */
@@ -70,6 +85,9 @@ void print_tasks_procs(){
   }
 }
 
+/*
+La funzione scrive su file le informazioni riguardanti un singolo processo
+*/
 void write_onfile_proc_info(FILE* f, proc_data* proc){
 
   fprintf(f, "%d %u %u %.2f %.2f %u \n",
@@ -77,6 +95,10 @@ void write_onfile_proc_info(FILE* f, proc_data* proc){
   proc->avg_load, proc->iowait_time_pctg, proc->process_page_faults);
 }
 
+/*
+La funzione esporta su file le informazioni riguardanti tutti i main 
+procceses in memoria 
+*/
 void export_data_onfile(){
 
   proc_data* proc = NULL;
@@ -91,6 +113,9 @@ void export_data_onfile(){
   }else printf("stat_log file open error\n");
   fclose(f);   
 }
+/*
+La funzione esporta i dati di un thread appena nato su un file
+*/
 void export_procsbirth_data_onfile(task_data* data){
   
   FILE* f;
@@ -104,6 +129,10 @@ void export_procsbirth_data_onfile(task_data* data){
   }else printf("proclife_log file open error\n");
   fclose(f);   
 }
+
+/*
+La funzione esporta i dati di un thread appena morto su un file
+*/
 void export_procsdeath_data_onfile(task_data* data){
   
   FILE* f;

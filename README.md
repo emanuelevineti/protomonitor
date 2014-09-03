@@ -17,7 +17,12 @@ Maggiori dettagli a seguire:
 . Periodicamente avviene la stampa delle informazioni a video.
 . I processi morti vengono solo marcati come non validi.
 . Le tabella hash vengono pulite dai processi non validi durante l'amministrazione 
-  periodica della tabella. 
+  periodica della tabella.
+. All'atto dell'inizalizzazione del programma se selezionata con l'argomento -a
+  vengono portati in memoria i dati riguardanti i processi attivi sulla macchina.
+. Trammite l'opzione -l si può ottenere un export su due file di log con le statistiche
+  dei processi in attività e tener traccia della nascita e morte di un processo.
+
 
 Elenco sintetico problemi aperti:
 . Si è scelto di utilizzare due tabelle diverse per aver la possibilità di avere
@@ -26,5 +31,5 @@ Elenco sintetico problemi aperti:
   la pena provare altre strade più vantaggiose.
 . Sembra che anche se gestiti casi di errore la e timeout libreria scap riproponga 
   eventi già valutati più di una volta.
-. Bisogna discutere di eventuali preferenze stilistiche nella scrittura del codice.
 . I commenti al momento in italiano devono essere tradotti.
+

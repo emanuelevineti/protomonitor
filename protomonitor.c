@@ -25,14 +25,14 @@ int main(int argc, char *argv[]) {
   time_t last_refresh;
   scap_t *h ;
   //apro la cattura live degli eventi
-  printf("\n\t\t INIZIO INIZIALIZZAZIONE \n");
+  
   
   read_argv(argc, argv);
   if(global_data.show_help_enabled){
     print_help();
     return(1);
   }
-  
+  printf("\n\t\t INIZIO INIZIALIZZAZIONE \n");
   if( ( h = scap_open_live(error)) == NULL){
     printf("Unable to connect to open sysdig: %s\n", error);
     return(false);
