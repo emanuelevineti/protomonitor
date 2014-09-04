@@ -30,27 +30,41 @@ funzionalità richieste
 void read_argv(int argc, char *argv[]){
 
   int i;
-
+  bool inv_arg = true;
   global_data.refresh_t = 5;
   global_data.refresh_man = 30;
   global_data.log_onfile_enabled = false;
   global_data.show_help_enabled = false;
   global_data.show_only_procs =false;
 
-  for(i = 0; i<argc; i++){
-    
-    if( strstr(argv[i], "-l") || strstr(argv[i], "--log"))
+  for(i = 1; i<argc; i++){
+    inv_arg = true;		//invalid argument check
+    if( strstr(argv[i], "-l") || strstr(argv[i], "--log")){
       global_data.log_onfile_enabled = true;
-    if( strstr(argv[i], "-p") || strstr(argv[i], "--proc_only"))
+      inv_arg = false;
+    }
+    if( strstr(argv[i], "-p") || strstr(argv[i], "--proc_only")){
       global_data.show_only_procs = true;
-    if( strstr(argv[i], "-h") || strstr(argv[i], "--help"))
+      inv_arg = false;
+    }
+    if( strstr(argv[i], "-h") || strstr(argv[i], "--help")){
       global_data.show_help_enabled = true;
-    if( strstr(argv[i], "-a") || strstr(argv[i], "--all"))
+      inv_arg = false;
+    }
+    if( strstr(argv[i], "-a") || strstr(argv[i], "--all")){
       global_data.get_all_proc = true;
+      inv_arg = false;
+    }
     if( strstr(argv[i], "-t") || strstr(argv[i], "--time")){
-      if((i+1) < argc && atoi(argv[i+1])>1 && atoi(argv[i+1])<10 ){
+      if((i+1) < argc && atoi(argv[i+1])>=1 && atoi(argv[i+1])<=10 ){
 	global_data.refresh_t = atoi(argv[i+1]);
+	i++;
+        inv_arg = false;
       }
+    }
+    if( inv_arg == true){
+      printf("%s : invalid argument\n",argv[i]);
+      global_data.show_help_enabled = true;
     }
   }
 }
