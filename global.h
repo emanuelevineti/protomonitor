@@ -72,6 +72,9 @@ typedef struct global{
   bool show_help_enabled;
   bool show_only_procs;
   bool get_all_proc;
+  float min_cpu_val;
+  float min_iowait;
+  u_int32_t min_page_faults;
   int refresh_t;
   int refresh_man;
 }global;

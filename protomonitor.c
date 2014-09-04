@@ -22,7 +22,7 @@ int main(int argc, char *argv[]) {
 
   char error[256];
   int capture = 1;
-  time_t last_refresh;
+  time_t last_refresh_t, last_refresh_m;
   scap_t *h ;
   //apro la cattura live degli eventi
   
@@ -55,8 +55,8 @@ int main(int argc, char *argv[]) {
 
   printf("\n\t\t FINE INIZIALIZZAZIONE \n");
   //ciclo di cattura
-  last_refresh = time(NULL);
-  global_data.refresh_man = global_data.refresh_t; //temporaneo
+  last_refresh_t = time(NULL);
+  last_refresh_m = time(NULL);
   while(capture)
     {	
       struct ppm_evt_hdr* ev;
@@ -73,13 +73,13 @@ int main(int argc, char *argv[]) {
 	fprintf(stderr, "scap_next() returned %d\n", res);
       /*si aggiornano i dati ogni refresh_t secondi (5 default)
 	(XXX numero da regolare) */
-      if( (time(NULL) - last_refresh) > global_data.refresh_t){
-	print_tasks_procs();
-	last_refresh = time(NULL);
-      }
-      if( (time(NULL) - last_refresh) > global_data.refresh_man){
+      if( (time(NULL) - last_refresh_m) > global_data.refresh_man){
         manage_data(h);
-        last_refresh = time(NULL);
+        last_refresh_m = time(NULL);
+      }
+      if( (time(NULL) - last_refresh_t) > global_data.refresh_t){
+	print_tasks_procs();
+	last_refresh_t = time(NULL);
       }
     }
   //chiudo la cattura live degli eventi

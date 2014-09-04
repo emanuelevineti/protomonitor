@@ -15,11 +15,14 @@ La funzione stampa su stdout le informazioni riguardanti l'uso del programma
 */
 void print_help(){
   printf("protomonitor: processes life live moninitor \n\n");
-  printf("	-l | --log 		export	proc data into a log file\n");
-  printf("	-p | --proc_only	show only information about main processes\n");
-  printf("	-h | --help		show information about the inline command\n");
-  printf("	-a | --all		track the activity of all active processes\n");
-  printf("	-t | --time < 1-10 >	set the refresh time (1 sec to 10)\n");
+  printf("	-l  | --log 			export	proc data into a log file\n");
+  printf("	-p  | --proc_only		show only information about main processes\n");
+  printf("	-h  | --help			show information about the inline command\n");
+  printf("	-a  | --all			track the activity of all active processes\n");
+  printf("	-t  | --time           <1-10>	set the refresh time (1 sec to 10)\n");
+  printf("	-mc | --min_cpu	       <min>	show processes with the cpu usage value greater than <min>\n");
+  printf("	-mf | --min_pagefaults <min>	show processes with the page faults value greater than <min>\n");
+  printf("	-mi | --min_iowait     <min>	show processes with the io_wait value greater than <min>\n");
 }
 
 /*
@@ -32,7 +35,7 @@ void read_argv(int argc, char *argv[]){
   int i;
   bool inv_arg = true;
   global_data.refresh_t = 5;
-  global_data.refresh_man = 30;
+  global_data.refresh_man = 5;
   global_data.log_onfile_enabled = false;
   global_data.show_help_enabled = false;
   global_data.show_only_procs =false;
@@ -58,8 +61,30 @@ void read_argv(int argc, char *argv[]){
     if( strstr(argv[i], "-t") || strstr(argv[i], "--time")){
       if((i+1) < argc && atoi(argv[i+1])>=1 && atoi(argv[i+1])<=10 ){
 	global_data.refresh_t = atoi(argv[i+1]);
+        global_data.refresh_man = atoi(argv[i+1]);
 	i++;
         inv_arg = false;
+      }
+    }
+    if( strstr(argv[i], "-mc") || strstr(argv[i], "--min_cpu")){
+       if((i+1) < argc && atof(argv[i+1])>=1){
+        global_data.min_cpu_val = atof(argv[i+1]);
+        inv_arg = false;
+	i++;
+      }
+    }
+    if( strstr(argv[i], "-mf") || strstr(argv[i], "--min_pagefaults")){
+      if((i+1) < argc && atof(argv[i+1])>=1){
+        global_data.min_iowait = atof(argv[i+1]);
+        inv_arg = false;
+	i++;
+      }
+    }
+    if( strstr(argv[i], "-mi") || strstr(argv[i], "--min_iowait")){
+      if((i+1) < argc && atoi(argv[i+1])>=1){
+        global_data.min_page_faults = atoi(argv[i+1]);
+        inv_arg = false;
+        i++;
       }
     }
     if( inv_arg == true){
@@ -90,7 +115,9 @@ void print_tasks_procs(){
 
   printf("\n\n\t\t\tPROCS\n\n");
   for(proc = g_procs; proc != NULL; proc=proc->hh.next) {
-    if(proc->valid != 0){
+    if(proc->valid != 0 && proc->avg_load >= global_data.min_cpu_val &&
+        proc->iowait_time_pctg >= global_data.min_iowait && 
+        proc->process_page_faults >= global_data.min_page_faults){
       printf("pid = %d actual_memory = %u : peak_memory = %u : avg_load = %.2f %% : iowait: %.2f"
 	     " : process_page_faults = %u \n",
 	     proc->pid, proc->actual_memory, proc->peak_memory,
