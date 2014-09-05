@@ -238,16 +238,8 @@ void handle_event(struct ppm_evt_hdr* ev, u_int16_t cpuid,scap_t *h) {
     invalidate_task_proc(ev->tid, ev->ts);
     break;
 
-  case PPM_SC_EXIT_GROUP:
-    invalidate_task_proc(ev->tid, ev->ts);
-    break;
-
-  case PPM_SC_EXIT:
-    invalidate_task_proc(ev->tid, ev->ts);
-    break;
-
   default:
-    printf("Unknown event %u\n", ev->type);
+   // printf("Unknown event %u\n", ev->type);
     break;
   }
 }
