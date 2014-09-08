@@ -79,7 +79,9 @@ void invalidate_task_proc(u_int16_t tid,u_int64_t death_ts){
     data->death_ts = death_ts;
     data->valid = 0;
     if(global_data.log_onfile_enabled)
-      export_procsdeath_data_onfile(data);
+      if(global_data.log_json_format)
+        exportjson_procsdeath_data_onfile(data);
+      else  export_procsdeath_data_onfile(data);
   }
 }
 
@@ -101,9 +103,11 @@ void add_task_proc(task_data* data){
     task_data *p = (task_data*)malloc(sizeof(task_data));
     if(p != NULL) {
 
-      if(global_data.log_onfile_enabled)
-        export_procsbirth_data_onfile(data);
-
+      if(global_data.log_onfile_enabled){
+        if(global_data.log_json_format)
+          exportjson_procsbirth_data_onfile(data);
+        else  export_procsbirth_data_onfile(data);
+      }
       DB2(printf("Inserimento task %d\n",data->tid);)
 	p->tid = ktid, p->pid = data->pid, p->father_pid = data->father_pid,
 	p->uid = data->uid, p->gid = data->gid,

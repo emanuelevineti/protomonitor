@@ -8,14 +8,14 @@
 #include <sys/types.h>
 #include <string.h> /*strstr()*/
 #include "scap.h"
+#include "scap-int.h"
 #include "global.h"
 
 /*
 La funzione stampa su stdout le informazioni riguardanti l'uso del programma
 */
 void print_help(){
-  printf("protomonitor: processes life live moninitor \n\n");
-  printf("	-l  | --log 			export	proc data into a log file\n");
+  printf("\n\n	protomonitor: processes life live moninitor \n\n");
   printf("	-p  | --proc_only		show only information about main processes\n");
   printf("	-h  | --help			show information about the inline command\n");
   printf("	-a  | --all			track the activity of all active processes\n");
@@ -23,8 +23,24 @@ void print_help(){
   printf("	-mc | --min_cpu	       <min>	show processes with the cpu usage value greater than <min>\n");
   printf("	-mf | --min_pagefaults <min>	show processes with the page faults value greater than <min>\n");
   printf("	-mi | --min_iowait     <min>	show processes with the io_wait value greater than <min>\n");
+  printf("	-l  | --log 			export proc data into a log file\n");
+  printf("	-lp | --log_path       <path>   export proc data into a log file specifying the destination path\n");
+  printf("	-lj | --log_json               	export proc data into a log file using a JSON format\n");
+  printf("	-ljp| --logjson_path   <path>	export proc data into a log file using a JSON format specifying the destination path\n\n");
 }
 
+bool path_is_valid(char *argv[]){
+
+  FILE* f;
+  char path[128];
+  strcpy(path,argv[0]);
+  strcat(path,"proto_stat.log");
+
+  if(f = fopen(path,"a")){
+    fclose(f);
+    return true;
+  }else return false;
+}
 /*
 La funzione si occupa di leggere i parametri passati al programma all'atto
 della sua invocazione e setta le variabili globali corrispondenti alle
@@ -38,10 +54,41 @@ void read_argv(int argc, char *argv[]){
   global_data.refresh_man = 5;
   global_data.log_onfile_enabled = false;
   global_data.show_help_enabled = false;
-  global_data.show_only_procs =false;
+  global_data.show_only_procs = false;
+  global_data.log_json_format = false;
+  strcpy(global_data.stat_path, "./proto_stat.log");
+  strcpy(global_data.proclife_path, "./proto_proclife.log");
 
   for(i = 1; i<argc; i++){
     inv_arg = true;		//invalid argument check
+    if( strstr(argv[i], "-lp") || strstr(argv[i], "--log_path")){
+      if((i+1) < argc && path_is_valid(&argv[i+1])){
+        global_data.log_onfile_enabled = true;
+        strcpy(global_data.stat_path,argv[i+1]);
+        strcpy(global_data.proclife_path,argv[i+1]);
+        strcat(global_data.stat_path,"proto_stat.log");
+        strcat(global_data.proclife_path,"proto_proclife.log");
+        inv_arg = false;
+        i++;
+      }
+    }
+    if( strstr(argv[i], "-lj") || strstr(argv[i], "--log_json")){
+      global_data.log_onfile_enabled = true;
+      global_data.log_json_format = true;
+      inv_arg = false;
+    }
+    if( strstr(argv[i], "-ljp") || strstr(argv[i], "--logjson_path")){
+      if((i+1) < argc && path_is_valid(&argv[i+1])){
+        global_data.log_onfile_enabled = true;
+        global_data.log_json_format = true;
+        strcpy(global_data.stat_path,argv[i+1]);
+        strcpy(global_data.proclife_path,argv[i+1]);
+        strcat(global_data.stat_path,"proto_stat.log");
+        strcat(global_data.proclife_path,"proto_proclife.log");
+        inv_arg = false;
+        i++;
+      }
+    }
     if( strstr(argv[i], "-l") || strstr(argv[i], "--log")){
       global_data.log_onfile_enabled = true;
       inv_arg = false;
@@ -130,12 +177,48 @@ void print_tasks_procs(){
 La funzione scrive su file le informazioni riguardanti un singolo processo
 */
 void write_onfile_proc_info(FILE* f, proc_data* proc){
+  task_data* f_task;
+  task_data* task;
+  u_int32_t pkey = proc->pid,ppkey;
 
-  fprintf(f, "%d %u %u %.2f %.2f %u \n",
-  proc->pid, proc->actual_memory, proc->peak_memory,
+  HASH_FIND_INT32( g_tasks, &pkey, task );
+  if(global_data.get_all_proc){
+    ppkey = task->father_pid;
+    HASH_FIND_INT32(g_tasks, &ppkey,f_task);
+  }
+
+  fprintf(f, "%d %d \"%s\" %d ", global_data.refresh_man, proc->pid, 
+    task->exe, task->father_pid);
+
+  if(global_data.get_all_proc)
+    fprintf(f,"\"%s\" ",f_task->exe);
+  else fprintf(f,"\"no name\" ");
+  fprintf(f,"%u %u %.2f %.2f %u \n",proc->actual_memory, proc->peak_memory,
   proc->avg_load, proc->iowait_time_pctg, proc->process_page_faults);
 }
 
+void writejson_onfile_proc_info(FILE* f, proc_data* proc){
+  task_data* f_task;
+  task_data* task;
+  u_int32_t pkey = proc->pid,ppkey;
+
+  HASH_FIND_INT32( g_tasks, &pkey, task );
+  if(global_data.get_all_proc){
+    ppkey = task->father_pid;
+    HASH_FIND_INT32(g_tasks, &ppkey,f_task);
+  }
+  
+  fprintf(f, "{\n\"time\" : %d,\n\"pid\" : %d,\n\"pname\" : \"%s\",\n\"ppid\""
+    ": %d,\n", global_data.refresh_man, proc->pid, 
+    task->exe, task->father_pid);
+
+  if(global_data.get_all_proc)
+    fprintf(f,"\"ppname\" : \"%s\",\n",f_task->exe);
+  else fprintf(f,"\"ppname\" : \"no name\",\n");
+  fprintf(f,"\"actul_memory\" : %u,\n\"peak_memory\" : %u,\n\"avg_load\" : "
+    "%.2f,\n\"iowait\" : %.2f,\n\"page_fault\" : %u,\n }\n",proc->actual_memory, 
+    proc->peak_memory, proc->avg_load, proc->iowait_time_pctg, proc->process_page_faults);
+}
 /*
 La funzione esporta su file le informazioni riguardanti tutti i main 
 procceses in memoria 
@@ -145,11 +228,13 @@ void export_data_onfile(){
   proc_data* proc = NULL;
   FILE* f;
 
-  f = fopen (LOG_STAT_PATH, "a");
+  f = fopen (global_data.stat_path, "a");
   if(f != NULL){
-    fprintf(f,"%lu \n",time(NULL));
+    fprintf(f,"%lu \n", (long int)time(NULL));
     for(proc = g_procs; proc != NULL; proc=proc->hh.next){
-      write_onfile_proc_info(f, proc);
+      if( global_data.log_json_format )
+        writejson_onfile_proc_info(f, proc);
+      else write_onfile_proc_info(f, proc);
     }
   }else printf("stat_log file open error\n");
   fclose(f);   
@@ -161,7 +246,7 @@ void export_procsbirth_data_onfile(task_data* data){
   
   FILE* f;
 
-  f = fopen (LOG_PROCLIFE_PATH, "a");
+  f = fopen (global_data.proclife_path, "a");
 
   if(f != NULL){
     fprintf(f, "%s %d  %d %d %d %d %s %lu \n",
@@ -178,11 +263,37 @@ void export_procsdeath_data_onfile(task_data* data){
   
   FILE* f;
 
-  f = fopen (LOG_PROCLIFE_PATH, "a");
+  f = fopen (global_data.proclife_path, "a");
 
   if(f != NULL){
     fprintf(f, "%s %d %d %lu \n",
       "DEATH:", data->tid, data->pid, data->death_ts);
+  }else printf("proclife_log file open error\n");
+  fclose(f);   
+}
+
+void exportjson_procsdeath_data_onfile(task_data* data){
+  
+  FILE* f;
+
+  f = fopen (global_data.proclife_path, "a");
+
+  if(f != NULL){
+    fprintf(f, "{\n\"state\" : \"%s\",\n\"tid\" : %d,\n\"pid\" : %d,\n\"death_ts\" : %lu,\n}",
+      "DEATH", data->tid, data->pid, data->death_ts);
+  }else printf("proclife_log file open error\n");
+  fclose(f);   
+}
+void exportjson_procsbirth_data_onfile(task_data* data){
+  
+  FILE* f;
+
+  f = fopen (global_data.proclife_path, "a");
+
+  if(f != NULL){
+    fprintf(f, "{\n\"state\" : \"%s\",\n\"tid\" : %d,\n\"pid\" : %d,\n\"ppid\" : %d,\n\"gid\" : %d,\n\"uid\" %d,\n\"exe\" : \"%s\",\n\"birth_ts\" : %lu,\n}",
+      "BIRTH",data->tid, data->pid, data->father_pid, 
+      data->gid, data->uid, data->exe, data->birth_ts);
   }else printf("proclife_log file open error\n");
   fclose(f);   
 }

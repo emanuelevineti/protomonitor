@@ -16,10 +16,6 @@ La funzione stampa su stdout i dati dei processi/threads in memoria
 void print_tasks_procs();
 
 /*
-La funzione scrive su file le informazioni riguardanti un singolo processo
-*/
-void write_onfile_proc_info(FILE* f,proc_data* proc);
-/*
 La funzione esporta su file le informazioni riguardanti tutti i main 
 procceses in memoria 
 */
@@ -33,5 +29,7 @@ La funzione esporta i dati di un thread appena morto su un file
 */
 void export_procsbirth_data_onfile(task_data* data);
 
+void exportjson_procsdeath_data_onfile(task_data* data);
+void exportjson_procsbirth_data_onfile(task_data* data);
 /*	end header		*/
 

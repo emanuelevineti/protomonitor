@@ -25,8 +25,7 @@ unsigned int MASK = 2;
 #define DB1(a) DBG(1,a)
 #define DB2(a) DBG(2,a)
 
-#define LOG_STAT_PATH "./proto_stat.log"
-#define LOG_PROCLIFE_PATH "./proto_proclife.log"
+
 /*	Dichiarazione strutture		*/
 typedef struct  task_data{
   char exe[128];
@@ -72,6 +71,9 @@ typedef struct global{
   bool show_help_enabled;
   bool show_only_procs;
   bool get_all_proc;
+  bool log_json_format;
+  char stat_path[128];
+  char proclife_path[128];
   float min_cpu_val;
   float min_iowait;
   u_int32_t min_page_faults;
