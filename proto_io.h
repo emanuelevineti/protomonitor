@@ -21,15 +21,23 @@ procceses in memoria
 */
 void export_data_onfile();
 /*
-La funzione esporta i dati di un thread appena nato su un file
+La funzione esporta i dati di un thread appena morto su un file
 */
 void export_procsdeath_data_onfile(task_data* data);
 /*
-La funzione esporta i dati di un thread appena morto su un file
+La funzione esporta i dati di un thread appena nato su un file
 */
 void export_procsbirth_data_onfile(task_data* data);
-
+/*
+La funzione esporta i dati di un thread appena morto su un file
+In formato JSON
+*/
 void exportjson_procsdeath_data_onfile(task_data* data);
+/*
+La funzione esporta i dati di un thread appena nato su un file
+In formato JSON
+*/
 void exportjson_procsbirth_data_onfile(task_data* data);
+
 /*	end header		*/
 

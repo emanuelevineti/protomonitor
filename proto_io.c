@@ -19,7 +19,7 @@ void print_help(){
   printf("	-p  | --proc_only		show only information about main processes\n");
   printf("	-h  | --help			show information about the inline command\n");
   printf("	-a  | --all			track the activity of all active processes\n");
-  printf("	-t  | --time           <1-10>	set the refresh time (1 sec to 10)\n");
+  printf("	-t  | --time           <1-60>	set the refresh time (1 sec to 60)\n");
   printf("	-mc | --min_cpu	       <min>	show processes with the cpu usage value greater than <min>\n");
   printf("	-mf | --min_pagefaults <min>	show processes with the page faults value greater than <min>\n");
   printf("	-mi | --min_iowait     <min>	show processes with the io_wait value greater than <min>\n");
@@ -106,7 +106,7 @@ void read_argv(int argc, char *argv[]){
       inv_arg = false;
     }
     if( strstr(argv[i], "-t") || strstr(argv[i], "--time")){
-      if((i+1) < argc && atoi(argv[i+1])>=1 && atoi(argv[i+1])<=10 ){
+      if((i+1) < argc && atoi(argv[i+1])>=1 && atoi(argv[i+1])<=60 ){
 	global_data.refresh_t = atoi(argv[i+1]);
         global_data.refresh_man = atoi(argv[i+1]);
 	i++;
@@ -180,14 +180,14 @@ void write_onfile_proc_info(FILE* f, proc_data* proc){
   task_data* f_task;
   task_data* task;
   u_int32_t pkey = proc->pid,ppkey;
-
+  time_t t = time(NULL);
   HASH_FIND_INT32( g_tasks, &pkey, task );
   if(global_data.get_all_proc){
     ppkey = task->father_pid;
     HASH_FIND_INT32(g_tasks, &ppkey,f_task);
   }
 
-  fprintf(f, "%d %d \"%s\" %d ", global_data.refresh_man, proc->pid, 
+  fprintf(f, "%s %d \"%s\" %d ", ctime(&t), proc->pid, 
     task->exe, task->father_pid);
 
   if(global_data.get_all_proc)
@@ -201,6 +201,7 @@ void writejson_onfile_proc_info(FILE* f, proc_data* proc){
   task_data* f_task;
   task_data* task;
   u_int32_t pkey = proc->pid,ppkey;
+  time_t t = time(NULL);
 
   HASH_FIND_INT32( g_tasks, &pkey, task );
   if(global_data.get_all_proc){
@@ -208,8 +209,8 @@ void writejson_onfile_proc_info(FILE* f, proc_data* proc){
     HASH_FIND_INT32(g_tasks, &ppkey,f_task);
   }
   
-  fprintf(f, "{\n\"time\" : %d,\n\"pid\" : %d,\n\"pname\" : \"%s\",\n\"ppid\""
-    ": %d,\n", global_data.refresh_man, proc->pid, 
+  fprintf(f, "{\n\"time\" : \"%s\",\n\"pid\" : %d,\n\"pname\" : \"%s\",\n\"ppid\""
+    ": %d,\n", ctime(&t), proc->pid, 
     task->exe, task->father_pid);
 
   if(global_data.get_all_proc)
@@ -230,7 +231,6 @@ void export_data_onfile(){
 
   f = fopen (global_data.stat_path, "a");
   if(f != NULL){
-    fprintf(f,"%lu \n", (long int)time(NULL));
     for(proc = g_procs; proc != NULL; proc=proc->hh.next){
       if( global_data.log_json_format )
         writejson_onfile_proc_info(f, proc);
@@ -249,9 +249,9 @@ void export_procsbirth_data_onfile(task_data* data){
   f = fopen (global_data.proclife_path, "a");
 
   if(f != NULL){
-    fprintf(f, "%s %d  %d %d %d %d %s %lu \n",
+    fprintf(f, "%s %d  %d %d %d %d %s %s \n",
       "BIRTH:",data->tid, data->pid, data->father_pid, 
-      data->gid, data->uid, data->exe, data->birth_ts);
+      data->gid, data->uid, data->exe, ctime(&data->birth_ts));
   }else printf("proclife_log file open error\n");
   fclose(f);   
 }
@@ -266,12 +266,15 @@ void export_procsdeath_data_onfile(task_data* data){
   f = fopen (global_data.proclife_path, "a");
 
   if(f != NULL){
-    fprintf(f, "%s %d %d %lu \n",
-      "DEATH:", data->tid, data->pid, data->death_ts);
+    fprintf(f, "%s %d %d %s \n",
+      "DEATH:", data->tid, data->pid, ctime(&data->death_ts));
   }else printf("proclife_log file open error\n");
   fclose(f);   
 }
-
+/*
+La funzione esporta i dati di un thread appena morto su un file
+In formato JSON
+*/
 void exportjson_procsdeath_data_onfile(task_data* data){
   
   FILE* f;
@@ -279,11 +282,15 @@ void exportjson_procsdeath_data_onfile(task_data* data){
   f = fopen (global_data.proclife_path, "a");
 
   if(f != NULL){
-    fprintf(f, "{\n\"state\" : \"%s\",\n\"tid\" : %d,\n\"pid\" : %d,\n\"death_ts\" : %lu,\n}",
-      "DEATH", data->tid, data->pid, data->death_ts);
+    fprintf(f, "{\n\"state\" : \"%s\",\n\"tid\" : %d,\n\"pid\" : %d,\n\"death_ts\" : \"%s\",\n}",
+      "DEATH", data->tid, data->pid, ctime(&data->death_ts));
   }else printf("proclife_log file open error\n");
   fclose(f);   
 }
+/*
+La funzione esporta i dati di un thread appena nato su un file
+In formato JSON
+*/
 void exportjson_procsbirth_data_onfile(task_data* data){
   
   FILE* f;
@@ -291,9 +298,9 @@ void exportjson_procsbirth_data_onfile(task_data* data){
   f = fopen (global_data.proclife_path, "a");
 
   if(f != NULL){
-    fprintf(f, "{\n\"state\" : \"%s\",\n\"tid\" : %d,\n\"pid\" : %d,\n\"ppid\" : %d,\n\"gid\" : %d,\n\"uid\" %d,\n\"exe\" : \"%s\",\n\"birth_ts\" : %lu,\n}",
+    fprintf(f, "{\n\"state\" : \"%s\",\n\"tid\" : %d,\n\"pid\" : %d,\n\"ppid\" : %d,\n\"gid\" : %d,\n\"uid\" %d,\n\"exe\" : \"%s\",\n\"birth_ts\" : \"%s\",\n}",
       "BIRTH",data->tid, data->pid, data->father_pid, 
-      data->gid, data->uid, data->exe, data->birth_ts);
+      data->gid, data->uid, data->exe, ctime(&data->birth_ts));
   }else printf("proclife_log file open error\n");
   fclose(f);   
 }

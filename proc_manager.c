@@ -58,7 +58,7 @@ void init_add_active_proc(scap_t* h){
   La funzione si occupa dell settaggio come non valido di un processo/thread
   appena morto
 */
-void invalidate_task_proc(u_int16_t tid,u_int64_t death_ts){
+void invalidate_task_proc(u_int16_t tid, time_t death_ts){
 
   task_data* data = NULL;
   proc_data* proc = NULL;
@@ -221,7 +221,7 @@ void handle_event(struct ppm_evt_hdr* ev, u_int16_t cpuid,scap_t *h) {
       strcpy(data.exe,t_info->exe);
       data.uid = t_info->uid;
       data.gid = t_info->gid;
-      data.birth_ts = ev->ts;
+      data.birth_ts = time(NULL);
       data.valid = 1;
 
       /*
@@ -239,7 +239,7 @@ void handle_event(struct ppm_evt_hdr* ev, u_int16_t cpuid,scap_t *h) {
       XXX Senza la cattura di questi 3 eventi diversi non si riesce
       a rilevare la morte di tutti i processi*/
   case PPME_PROCEXIT_E: /* The main process ends */
-    invalidate_task_proc(ev->tid, ev->ts);
+    invalidate_task_proc(ev->tid, time(NULL));
     break;
 
   default:

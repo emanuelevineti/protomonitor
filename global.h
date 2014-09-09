@@ -35,8 +35,8 @@ typedef struct  task_data{
   u_int16_t uid;
   u_int16_t gid;
   u_int16_t valid;
-  u_int64_t birth_ts; /* birth timestamp, in nanoseconds from epoch */
-  u_int64_t death_ts; /* death timestamp, in nanoseconds from epoch */
+  time_t birth_ts; /* birth timestamp */
+  time_t death_ts; /* death timestamp */
   UT_hash_handle hh;
 }task_data;
 
