@@ -27,6 +27,7 @@ void print_help(){
   printf("	-lp | --log_path       <path>   export proc data into a log file specifying the destination path\n");
   printf("	-lj | --log_json               	export proc data into a log file using a JSON format\n");
   printf("	-ljp| --logjson_path   <path>	export proc data into a log file using a JSON format specifying the destination path\n\n");
+  printf("	-lt | --log_threads           	export threads life data on a log file\n");
 }
 
 bool path_is_valid(char *argv[]){
@@ -51,11 +52,12 @@ void read_argv(int argc, char *argv[]){
   int i;
   bool inv_arg = true;
   global_data.refresh_t = 5;
-  global_data.refresh_man = 5;
   global_data.log_onfile_enabled = false;
   global_data.show_help_enabled = false;
   global_data.show_only_procs = false;
   global_data.log_json_format = false;
+  global_data.last_refresh = 0;
+  global_data.log_threads_life = false;
   strcpy(global_data.stat_path, "./proto_stat.log");
   strcpy(global_data.proclife_path, "./proto_proclife.log");
 
@@ -108,7 +110,6 @@ void read_argv(int argc, char *argv[]){
     if( strstr(argv[i], "-t") || strstr(argv[i], "--time")){
       if((i+1) < argc && atoi(argv[i+1])>=1 && atoi(argv[i+1])<=60 ){
 	global_data.refresh_t = atoi(argv[i+1]);
-        global_data.refresh_man = atoi(argv[i+1]);
 	i++;
         inv_arg = false;
       }
@@ -133,6 +134,9 @@ void read_argv(int argc, char *argv[]){
         inv_arg = false;
         i++;
       }
+    }
+    if(strstr(argv[i],"-lt") || strstr(argv[i], "--log_threads")){
+    global_data.log_threads_life = true;
     }
     if( inv_arg == true){
       printf("%s : invalid argument\n",argv[i]);
@@ -186,13 +190,21 @@ void write_onfile_proc_info(FILE* f, proc_data* proc){
     ppkey = task->father_pid;
     HASH_FIND_INT32(g_tasks, &ppkey,f_task);
   }
-
-  fprintf(f, "%s %d \"%s\" %d ", ctime(&t), proc->pid, 
+  fprintf(f,"%s",proc->state);
+  if( task->birth_ts > global_data.last_refresh )
+    fprintf(f,"%ju",(uintmax_t)task->birth_ts);
+  else 
+    fprintf(f,"%ju",(uintmax_t)global_data.last_refresh);
+  if( task->death_ts > 0)
+    fprintf(f,"%ju",(uintmax_t)task->death_ts);
+  else fprintf(f,"%ju",global_data.actual_refresh);
+  
+  fprintf(f, "%s %d %s %d ", ctime(&t), proc->pid, 
     task->exe, task->father_pid);
 
   if(global_data.get_all_proc)
-    fprintf(f,"\"%s\" ",f_task->exe);
-  else fprintf(f,"\"no name\" ");
+    fprintf(f,"%s ",f_task->exe);
+  else fprintf(f,"no name ");
   fprintf(f,"%u %u %.2f %.2f %u \n",proc->actual_memory, proc->peak_memory,
   proc->avg_load, proc->iowait_time_pctg, proc->process_page_faults);
 }
@@ -202,22 +214,33 @@ void writejson_onfile_proc_info(FILE* f, proc_data* proc){
   task_data* task;
   u_int32_t pkey = proc->pid,ppkey;
   time_t t = time(NULL);
-
+  char *pname;
   HASH_FIND_INT32( g_tasks, &pkey, task );
   if(global_data.get_all_proc){
     ppkey = task->father_pid;
     HASH_FIND_INT32(g_tasks, &ppkey,f_task);
   }
-  
-  fprintf(f, "{\n\"time\" : \"%s\",\n\"pid\" : %d,\n\"pname\" : \"%s\",\n\"ppid\""
-    ": %d,\n", ctime(&t), proc->pid, 
-    task->exe, task->father_pid);
+  pname = strrchr(task->exe,'/'); 
+  fprintf(f,"{\n\"state\" : \"%s\",\n",proc->state);
+  fprintf(f,"\"start_t\" : ");
+  if( task->birth_ts > global_data.last_refresh )
+    fprintf(f,"%ju,\n",(uintmax_t)task->birth_ts);
+  else 
+    fprintf(f,"%ju,\n",(uintmax_t)global_data.last_refresh);
+  fprintf(f,"\"end_t\" : ");
+  if( task->death_ts > 0)
+    fprintf(f,"%ju,\n",(uintmax_t)task->death_ts);
+  else fprintf(f,"%ju,\n",global_data.actual_refresh);
+
+  fprintf(f, "\"pid\" : %d,\n\"ppath\" : \"%s\",\n\"pname\" : \"%s\",\n\"ppid\""
+    ": %d,\n", proc->pid, 
+    task->exe, &pname[1], task->father_pid);
 
   if(global_data.get_all_proc)
     fprintf(f,"\"ppname\" : \"%s\",\n",f_task->exe);
   else fprintf(f,"\"ppname\" : \"no name\",\n");
   fprintf(f,"\"actul_memory\" : %u,\n\"peak_memory\" : %u,\n\"avg_load\" : "
-    "%.2f,\n\"iowait\" : %.2f,\n\"page_fault\" : %u,\n }\n",proc->actual_memory, 
+    "%.2f,\n\"iowait\" : %.2f,\n\"page_fault\" : %u\n }\n",proc->actual_memory, 
     proc->peak_memory, proc->avg_load, proc->iowait_time_pctg, proc->process_page_faults);
 }
 /*
@@ -231,6 +254,7 @@ void export_data_onfile(){
 
   f = fopen (global_data.stat_path, "a");
   if(f != NULL){
+   
     for(proc = g_procs; proc != NULL; proc=proc->hh.next){
       if( global_data.log_json_format )
         writejson_onfile_proc_info(f, proc);

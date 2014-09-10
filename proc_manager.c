@@ -48,6 +48,7 @@ void init_add_active_proc(scap_t* h){
       p = (proc_data*)malloc(sizeof(proc_data));
       p->pid = d->pid;
       p->valid = 1;
+      strcpy(p->state,"R");
       HASH_ADD(hh, g_procs, pid, sizeof(u_int32_t), p);
       updateProcessStats(p);
     }  
@@ -70,6 +71,7 @@ void invalidate_task_proc(u_int16_t tid, time_t death_ts){
     finalizeProcess(proc);
     DB2(printf("Eliminazione processo pid : %d\n",proc->pid);)
     proc->valid = 0;
+    strcpy(proc->state,"D");
   }
 
   HASH_FIND_INT32(g_tasks, &key, data);
@@ -77,8 +79,9 @@ void invalidate_task_proc(u_int16_t tid, time_t death_ts){
 
     DB2(printf("Eliminazione processo tid : %d\n",data->tid);)
     data->death_ts = death_ts;
+    
     data->valid = 0;
-    if(global_data.log_onfile_enabled)
+    if(global_data.log_threads_life)
       if(global_data.log_json_format)
         exportjson_procsdeath_data_onfile(data);
       else  export_procsdeath_data_onfile(data);
@@ -103,7 +106,7 @@ void add_task_proc(task_data* data){
     task_data *p = (task_data*)malloc(sizeof(task_data));
     if(p != NULL) {
 
-      if(global_data.log_onfile_enabled){
+      if(global_data.log_threads_life){
         if(global_data.log_json_format)
           exportjson_procsbirth_data_onfile(data);
         else  export_procsbirth_data_onfile(data);
@@ -112,6 +115,7 @@ void add_task_proc(task_data* data){
 	p->tid = ktid, p->pid = data->pid, p->father_pid = data->father_pid,
 	p->uid = data->uid, p->gid = data->gid,
 	p->valid = data->valid;
+        p->birth_ts = data->birth_ts;
       strcpy(p->exe,data->exe);
       HASH_ADD(hh, g_tasks, tid, sizeof(u_int32_t), p);
     }
@@ -126,6 +130,7 @@ void add_task_proc(task_data* data){
     if(p != NULL){
       p->pid = kpid;
       p->valid = data->valid;
+      strcpy(p->state, "B");
       HASH_ADD(hh, g_procs, pid,sizeof(u_int32_t), p);
       updateProcessStats(p);
     }DB2(printf("Inserimento processo pid: %d \n", p->pid);)
@@ -148,6 +153,7 @@ void clear_task_proc(scap_t* handle){
 	HASH_DEL(g_procs, proc);
       if(proc) free(proc);
     }
+    if(strstr(proc->state,"B")) strcpy(proc->state,"R");
   }
   /*
     Si attua per ogni thread la ricerca del suo processo principale nella
@@ -255,6 +261,7 @@ void handle_event(struct ppm_evt_hdr* ev, u_int16_t cpuid,scap_t *h) {
 void manage_data(scap_t* handle){
 
   proc_data* proc = NULL;
+  global_data.actual_refresh = time(NULL);
 
   for(proc = g_procs; proc != NULL; proc=proc->hh.next)
     finalizeProcess(proc);
@@ -263,9 +270,9 @@ void manage_data(scap_t* handle){
     export_data_onfile();
 
   clear_task_proc(handle);
-
+  print_tasks_procs();
   for(proc = g_procs; proc != NULL; proc=proc->hh.next)
     updateProcessStats(proc);
-
+  global_data.last_refresh = global_data.actual_refresh;
 }
 /*	Fine modulo gestione processi	*/

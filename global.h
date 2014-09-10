@@ -44,6 +44,7 @@ typedef struct	proc_data{
   u_int32_t pid;	//hash key
   u_int16_t valid;
 
+  char state[2];
   u_int32_t peak_memory;
   u_int32_t actual_memory;
 
@@ -72,13 +73,15 @@ typedef struct global{
   bool show_only_procs;
   bool get_all_proc;
   bool log_json_format;
+  bool log_threads_life;
   char stat_path[128];
   char proclife_path[128];
+  time_t last_refresh;
+  time_t actual_refresh;
   float min_cpu_val;
   float min_iowait;
   u_int32_t min_page_faults;
   int refresh_t;
-  int refresh_man;
 }global;
 
 /*	Definizione variabili globali	*/
