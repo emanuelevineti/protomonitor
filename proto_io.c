@@ -7,10 +7,13 @@
 #include <fcntl.h>
 #include <sys/types.h>
 #include <string.h> /*strstr()*/
+#include <sys/types.h>
+#include <sys/socket.h> 
+#include <netinet/in.h>
 #include "scap.h"
 #include "scap-int.h"
 #include "global.h"
-
+#include <errno.h>
 /*
 La funzione stampa su stdout le informazioni riguardanti l'uso del programma
 */
@@ -28,6 +31,8 @@ void print_help(){
   printf("	-lj | --log_json               	export proc data into a log file using a JSON format\n");
   printf("	-ljp| --logjson_path   <path>	export proc data into a log file using a JSON format specifying the destination path\n\n");
   printf("	-lt | --log_threads           	export threads life data on a log file\n");
+  printf("	-elk| --elk_export 		export proc_data on elk\n");
+
 }
 
 bool path_is_valid(char *argv[]){
@@ -60,6 +65,7 @@ void read_argv(int argc, char *argv[]){
   global_data.log_threads_life = false;
   strcpy(global_data.stat_path, "./proto_stat.log");
   strcpy(global_data.proclife_path, "./proto_proclife.log");
+  global_data.export_elk = false;
 
   for(i = 1; i<argc; i++){
     inv_arg = true;		//invalid argument check
@@ -105,6 +111,10 @@ void read_argv(int argc, char *argv[]){
     }
     if( strstr(argv[i], "-a") || strstr(argv[i], "--all")){
       global_data.get_all_proc = true;
+      inv_arg = false;
+    }
+    if( strstr(argv[i], "-elk") || strstr(argv[i],"elk_export")){
+      global_data.export_elk = true;
       inv_arg = false;
     }
     if( strstr(argv[i], "-t") || strstr(argv[i], "--time")){
@@ -221,26 +231,26 @@ void writejson_onfile_proc_info(FILE* f, proc_data* proc){
     HASH_FIND_INT32(g_tasks, &ppkey,f_task);
   }
   pname = strrchr(task->exe,'/'); 
-  fprintf(f,"{\n\"state\" : \"%s\",\n",proc->state);
+  fprintf(f,"{ \"state\" : \"%s\", ",proc->state);
   fprintf(f,"\"start_t\" : ");
   if( task->birth_ts > global_data.last_refresh )
-    fprintf(f,"%ju,\n",(uintmax_t)task->birth_ts);
+    fprintf(f,"%ju, ",(uintmax_t)task->birth_ts);
   else 
-    fprintf(f,"%ju,\n",(uintmax_t)global_data.last_refresh);
+    fprintf(f,"%ju, ",(uintmax_t)global_data.last_refresh);
   fprintf(f,"\"end_t\" : ");
   if( task->death_ts > 0)
-    fprintf(f,"%ju,\n",(uintmax_t)task->death_ts);
-  else fprintf(f,"%ju,\n",global_data.actual_refresh);
+    fprintf(f,"%ju, ",(uintmax_t)task->death_ts);
+  else fprintf(f,"%ju, ",global_data.actual_refresh);
 
-  fprintf(f, "\"pid\" : %d,\n\"ppath\" : \"%s\",\n\"pname\" : \"%s\",\n\"ppid\""
-    ": %d,\n", proc->pid, 
+  fprintf(f, "\"pid\" : %d, \"ppath\" : \"%s\", \"pname\" : \"%s\", \"ppid\""
+    ": %d, ", proc->pid, 
     task->exe, &pname[1], task->father_pid);
 
   if(global_data.get_all_proc)
-    fprintf(f,"\"ppname\" : \"%s\",\n",f_task->exe);
-  else fprintf(f,"\"ppname\" : \"no name\",\n");
-  fprintf(f,"\"actul_memory\" : %u,\n\"peak_memory\" : %u,\n\"avg_load\" : "
-    "%.2f,\n\"iowait\" : %.2f,\n\"page_fault\" : %u\n }\n",proc->actual_memory, 
+    fprintf(f,"\"ppname\" : \"%s\", ",f_task->exe);
+  else fprintf(f,"\"ppname\" : \"no name\", ");
+  fprintf(f,"\"actul_memory\" : %u, \"peak_memory\" : %u, \"avg_load\" : "
+    "%.2f, \"iowait\" : %.2f, \"page_fault\" : %u }\n",proc->actual_memory, 
     proc->peak_memory, proc->avg_load, proc->iowait_time_pctg, proc->process_page_faults);
 }
 /*
@@ -279,7 +289,82 @@ void export_procsbirth_data_onfile(task_data* data){
   }else printf("proclife_log file open error\n");
   fclose(f);   
 }
+void send_data_to_es(proc_data* proc){
+  char message[3025];
+  char tmp[2050];
+  
+  task_data* f_task;
+  task_data* task;
+  u_int32_t pkey = proc->pid,ppkey;
+  time_t t = time(NULL);
+  char *pname;
+  
+  HASH_FIND_INT32( g_tasks, &pkey, task );
+  if(global_data.get_all_proc){
+    ppkey = task->father_pid;
+    HASH_FIND_INT32(g_tasks, &ppkey,f_task);
+  }
+  pname = strrchr(task->exe,'/'); 
+  sprintf(message,"{ \"state\" : \"%s\", \"start_t\" : ",proc->state);
+  if( task->birth_ts > global_data.last_refresh )
+    sprintf(tmp, "%ju, ",(uintmax_t)task->birth_ts);
+  else 
+    sprintf(tmp, "%ju, ",(uintmax_t)global_data.last_refresh);
+  strcat(message,tmp);
+  sprintf(tmp, "\"end_t\" : ");
+  strcat(message,tmp);
+  if( task->death_ts > 0)
+    sprintf(tmp, "%ju, ",(uintmax_t)task->death_ts);
+  else sprintf(tmp, "%ju, ",global_data.actual_refresh);
+  strcat(message,tmp);
+  sprintf(tmp,"\"pid\" : %d, \"ppath\" : \"%s\", \"pname\" : \"%s\", \"ppid\""
+    ": %d, ", proc->pid, 
+    task->exe, &pname[1], task->father_pid);
+  strcat(message,tmp);
+  if(global_data.get_all_proc)
+    sprintf(tmp, "\"ppname\" : \"%s\", ",f_task->exe);
+  else sprintf(tmp, "\"ppname\" : \"no name\", ");
+  strcat(message,tmp);
+  sprintf(tmp, "\"actul_memory\" : %u, \"peak_memory\" : %u, \"avg_load\" : "
+    "%.2f, \"iowait\" : %.2f, \"page_fault\" : %u }\n",proc->actual_memory, 
+    proc->peak_memory, proc->avg_load, proc->iowait_time_pctg, proc->process_page_faults);
+  strcat(message,tmp);
 
+  send(global_data.socket_desc,message,strlen(message),0);
+}
+/*
+La funzione esporta i dati del programma atraverso il socket di rete
+*/
+void export_data_elk(){
+
+  proc_data* proc = NULL;
+  
+  printf("4\n");
+  for(proc = g_procs; proc != NULL; proc=proc->hh.next)
+    send_data_to_es(proc);
+}
+/*
+La funzione inizializza una connessione aprendo un nuovo socket di rete
+*/
+void init_connection_socket(){
+  struct sockaddr_in address;
+  int addrlen;
+  /* type of socket created in socket() */
+  global_data.socket_desc = socket(AF_INET,SOCK_STREAM,0);
+  if(global_data.socket_desc < 0){
+    perror("Create socket Error: ");
+    global_data.show_help_enabled = true;
+    return;
+  }
+  address.sin_family = AF_INET;
+  address.sin_addr.s_addr = inet_addr("127.0.0.1");
+  address.sin_port = htons(5652);
+  if(connect(global_data.socket_desc,(struct sockaddr *)&address,sizeof(address)) == -1){
+    perror("Connect Error: ");
+    global_data.show_help_enabled = true;
+    return;
+  }
+}
 /*
 La funzione esporta i dati di un thread appena morto su un file
 */

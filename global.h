@@ -74,6 +74,8 @@ typedef struct global{
   bool get_all_proc;
   bool log_json_format;
   bool log_threads_life;
+  bool export_elk;
+  int socket_desc;
   char stat_path[128];
   char proclife_path[128];
   time_t last_refresh;

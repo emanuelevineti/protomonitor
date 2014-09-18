@@ -38,6 +38,13 @@ La funzione esporta i dati di un thread appena nato su un file
 In formato JSON
 */
 void exportjson_procsbirth_data_onfile(task_data* data);
-
+/*
+La funzione esporta i dati del programma atraverso il socket di rete
+*/
+void export_data_elk();
+/*
+La funzione inizializza una connessione aprendo un nuovo socket di rete
+*/
+void init_connection_socket();
 /*	end header		*/
 

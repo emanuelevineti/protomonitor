@@ -268,7 +268,9 @@ void manage_data(scap_t* handle){
 
   if(global_data.log_onfile_enabled)
     export_data_onfile();
-
+  if(global_data.export_elk)
+    printf("export\n");
+    export_data_elk();
   clear_task_proc(handle);
   print_tasks_procs();
   for(proc = g_procs; proc != NULL; proc=proc->hh.next)
