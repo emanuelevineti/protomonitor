@@ -40,6 +40,7 @@ void init_add_active_proc(scap_t* h){
     d->uid = proc->uid;
     d->gid = proc->gid;
     d->birth_ts = 0;
+    d->death_ts = 0;
     d->valid = 1;
     
     HASH_ADD(hh, g_tasks, tid, sizeof(u_int32_t), d);
@@ -116,6 +117,7 @@ void add_task_proc(task_data* data){
 	p->uid = data->uid, p->gid = data->gid,
 	p->valid = data->valid;
         p->birth_ts = data->birth_ts;
+        p->death_ts = 0;
       strcpy(p->exe,data->exe);
       HASH_ADD(hh, g_tasks, tid, sizeof(u_int32_t), p);
     }
