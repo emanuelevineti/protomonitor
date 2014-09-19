@@ -76,6 +76,8 @@ typedef struct global{
   bool log_threads_life;
   bool export_elk;
   int socket_desc;
+  u_int16_t dest_port;
+  char dest_IP[25];
   char stat_path[128];
   char proclife_path[128];
   time_t last_refresh;

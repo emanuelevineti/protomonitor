@@ -31,7 +31,7 @@ void print_help(){
   printf("	-lj | --log_json               	export proc data into a log file using a JSON format\n");
   printf("	-ljp| --logjson_path   <path>	export proc data into a log file using a JSON format specifying the destination path\n\n");
   printf("	-lt | --log_threads           	export threads life data on a log file\n");
-  printf("	-elk| --elk_export 		export proc_data on elk\n");
+  printf("	-elk| --elk_export  <IP> <port>	export proc_data on elk\n");
 
 }
 
@@ -114,8 +114,13 @@ void read_argv(int argc, char *argv[]){
       inv_arg = false;
     }
     if( strstr(argv[i], "-elk") || strstr(argv[i],"elk_export")){
-      global_data.export_elk = true;
-      inv_arg = false;
+      if((i+2) < argc){
+        strcpy(global_data.dest_IP,argv[i+1]);
+        global_data.dest_port = atoi(argv[i+2]);
+        global_data.export_elk = true;
+        inv_arg = false;
+        i+=2;
+      }
     }
     if( strstr(argv[i], "-t") || strstr(argv[i], "--time")){
       if((i+1) < argc && atoi(argv[i+1])>=1 && atoi(argv[i+1])<=60 ){
@@ -357,8 +362,8 @@ void init_connection_socket(){
     return;
   }
   address.sin_family = AF_INET;
-  address.sin_addr.s_addr = inet_addr("127.0.0.1");
-  address.sin_port = htons(5652);
+  address.sin_addr.s_addr = inet_addr(global_data.dest_IP);
+  address.sin_port = htons(global_data.dest_port);
   if(connect(global_data.socket_desc,(struct sockaddr *)&address,sizeof(address)) == -1){
     perror("Connect Error: ");
     global_data.show_help_enabled = true;
