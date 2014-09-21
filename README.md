@@ -52,7 +52,7 @@ Se si è scaricato l'archivio di logstash dal sito, basterà copiare il file di 
 
 Ora siamo in grado di mandare i dati dal protomonitor a Logstash che li invierà a sua volta a elasticsearch.
 
-Per caricare le Dashboard per l'analisi e visualizzazione dei dati da parte di kibana basterà eseguire kibana atraverso il proprio browser e caricare le dashboard atraverso i seguenti passi: 
+Per caricare le Dashboard per l'analisi e visualizzazione dei dati da parte di kibana basterà eseguire kibana atraverso il proprio browser e caricare le dashboard attraverso i seguenti passi: 
 -in alto a destra premere sul tasto load
 -selezionare l'opzione advanced
 -caricare i file delle dashboard all'interno della repository del protomonitor.
